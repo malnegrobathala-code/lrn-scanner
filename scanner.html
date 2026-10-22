@@ -1,0 +1,209 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Live LRN scanner</title>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <style>
+    \\\\\\\*{box-sizing:border-box}body{margin:0;background:#eef4f1;color:#17352c;font:16px Arial,sans-serif}
+    main{max-width:720px;margin:24px auto;padding:24px;background:white;border-radius:16px}
+    h1{font-size:26px}p{line-height:1.5}video{width:100%;max-height:420px;background:#15231e;border-radius:12px}
+    button,input,select{font:inherit;padding:12px;border:1px solid #a4b9af;border-radius:8px;margin:6px 0}
+    button{cursor:pointer;background:#185d46;color:white}button:disabled{opacity:.5;cursor:default}
+    input,select{width:100%}label{display:block;font-weight:bold;margin-top:16px}
+    .message{background:#eef4f1;padding:14px;border-radius:8px;white-space:pre-wrap;line-height:1.5}
+    .muted{color:#536b61;font-size:14px}@media(max-width:760px){main{margin:0;border-radius:0;padding:18px}}
+  </style>
+</head>
+<body>
+<main>
+  <h1>Live LRN scanner</h1>
+  <p>Start the camera. Hold the ID steady so the 12-digit LRN is clear, then select <b>Read LRN</b>.</p>
+  <video id="video" autoplay playsinline muted></video>
+  <canvas id="canvas" hidden></canvas>
+  <button id="start" type="button">Start camera</button>
+  <button id="read" type="button" disabled>Read LRN</button>
+  <button id="stop" type="button">Stop camera</button>
+  <label for="device">Camera</label>
+  <select id="device"><option value="">Default / rear camera</option></select>
+  <label for="photo">Or take / upload an ID photo</label>
+  <input id="photo" type="file" accept="image/\\\\\\\*" capture="environment">
+  <div id="message" class="message" role="status">Camera not started.</div>
+  <label for="lrn">Recognized LRN — verify all 12 digits</label>
+  <input id="lrn" inputmode="numeric" maxlength="12" autocomplete="off" placeholder="12-digit LRN">
+  <button id="send" type="button">Use LRN in attendance app</button>
+  <button id="copy" type="button">Copy LRN</button>
+  <p id="connection" class="muted">You can copy the LRN and paste it into the attendance app.</p>
+  <p class="muted">Images are processed in this browser. This page does not save attendance or upload ID photos to your Google Sheet. OCR can misread digits; verify the result.</p>
+</main>
+<script>
+  const $ = id => document.getElementById(id);
+  const params = new URLSearchParams(location.hash.slice(1));
+  const nonce = params.get('nonce') || '';
+  const returnOrigin = params.get('origin') || '';
+  let stream = null, worker = null, workerPromise = null, busy = false, connected = false;
+  let cameraRequest = 0, ackTimer = null;
+
+  function allowedReturnOrigin(origin) {
+    try {
+      const url = new URL(origin);
+      return url.origin === origin \\\\\\\&\\\\\\\& url.protocol === 'https:' \\\\\\\&\\\\\\\&
+        (url.hostname === 'script.google.com' || url.hostname === 'script.googleusercontent.com' ||
+         url.hostname.endsWith('.script.googleusercontent.com') || url.hostname.endsWith('-script.googleusercontent.com'));
+    } catch { return false; }
+  }
+  const hasReturn = allowedReturnOrigin(returnOrigin) \\\\\\\&\\\\\\\& /^\\\\\\\[a-f0-9]{32}$/.test(nonce) \\\\\\\&\\\\\\\& !!window.opener;
+  function notify(type, extra = {}) {
+    if (!hasReturn) return false;
+    try { window.opener.postMessage({type, nonce, ...extra}, returnOrigin); return true; }
+    catch { return false; }
+  }
+  window.addEventListener('message', event => {
+    if (!hasReturn || event.origin !== returnOrigin || event.source !== window.opener ||
+        !event.data || event.data.nonce !== nonce) return;
+    if (event.data.type === 'ATTENDANCE\\\\\\\_SCANNER\\\\\\\_ACK') {
+      connected = true;
+      $('connection').textContent = 'Connected to the attendance app. Scan, verify, then select Use LRN.';
+    }
+    if (event.data.type === 'ATTENDANCE\\\\\\\_LRN\\\\\\\_ACK') {
+      clearTimeout(ackTimer);
+      stopCamera();
+      $('connection').textContent = 'LRN received by the attendance app. Return to that tab and select Record subject attendance.';
+    }
+  });
+  if (hasReturn) notify('ATTENDANCE\\\\\\\_SCANNER\\\\\\\_READY');
+  const handshakeTimer = setInterval(() => {
+    if (!connected \\\\\\\&\\\\\\\& hasReturn) notify('ATTENDANCE\\\\\\\_SCANNER\\\\\\\_READY');
+    else clearInterval(handshakeTimer);
+  }, 1500);
+  setTimeout(() => clearInterval(handshakeTimer), 30000);
+
+  function stopCamera() {
+    cameraRequest++;
+    if (stream) stream.getTracks().forEach(track => track.stop());
+    stream = null;
+    $('video').srcObject = null;
+    $('read').disabled = true;
+  }
+  async function startCamera() {
+    stopCamera();
+    const request = cameraRequest;
+    $('start').disabled = true;
+    try {
+      if (window.top !== window.self) throw new Error('Open the scanner URL directly in a new browser tab, not inside an embedded page.');
+      if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia)
+        throw new Error('Open the hosted HTTPS scanner URL in Chrome or Safari. Do not open the downloaded file directly.');
+      const deviceId = $('device').value;
+      const acquired = await navigator.mediaDevices.getUserMedia({audio:false, video: deviceId ?
+        {deviceId:{exact:deviceId}} : {facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}}});
+      if (request !== cameraRequest) { acquired.getTracks().forEach(track => track.stop()); return; }
+      stream = acquired;
+      $('video').srcObject = stream;
+      await $('video').play();
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const selected = stream.getVideoTracks()\\\\\\\[0].getSettings().deviceId || '';
+      $('device').replaceChildren(new Option('Default / rear camera',''));
+      devices.filter(d => d.kind === 'videoinput').forEach((d, i) =>
+        $('device').add(new Option(d.label || 'Camera '+(i+1), d.deviceId)));
+      $('device').value = selected;
+      $('read').disabled = busy;
+      $('message').textContent = 'Camera ready. Keep the LRN in focus, then select Read LRN.';
+    } catch (error) {
+      stopCamera();
+      const help = {
+        NotAllowedError:'Camera permission was denied or blocked. Allow camera for this scanner website in browser settings and device settings, then retry.',
+        NotFoundError:'No camera was detected. Connect a camera or use an ID photo.',
+        NotReadableError:'The camera is unavailable or being used by another app. Close other camera apps and retry.',
+        OverconstrainedError:'The selected camera is unavailable. Choose the default camera and retry.'
+      };
+      $('message').textContent = help\\\\\\\[error.name] || error.message;
+    } finally { $('start').disabled = false; }
+  }
+  async function getWorker() {
+    if (!window.Tesseract) throw new Error('OCR library could not load. Check the internet connection or type the LRN.');
+    if (!workerPromise) workerPromise = (async () => {
+      const created = await Tesseract.createWorker('eng');
+      await created.setParameters({tessedit\\\\\\\_char\\\\\\\_whitelist:'0123456789 -\\\\\\\\n'});
+      worker = created;
+      return worker;
+    })().catch(error => { workerPromise = null; throw error; });
+    return workerPromise;
+  }
+  function candidates(text) {
+    // Require digit boundaries; do not accept a 12-digit substring of a longer number.
+    const found = \\\\\\\[];
+    const regex = /(?:^|\\\\\\\[^\\\\\\\\d])((?:\\\\\\\\d\\\\\\\[ \\\\\\\\t-]\\\\\\\*){11}\\\\\\\\d)(?!\\\\\\\[ \\\\\\\\t-]\\\\\\\*\\\\\\\\d)/g;
+    for (const match of String(text || '').matchAll(regex)) found.push(match\\\\\\\[1].replace(/\\\\\\\\D/g,''));
+    return \\\\\\\[...new Set(found)];
+  }
+  async function recognize(image) {
+    if (busy) return;
+    busy = true;
+    $('read').disabled = true;
+    $('photo').disabled = true;
+    $('message').textContent = 'Reading LRN… The first scan downloads the OCR model.';
+    try {
+      const engine = await getWorker();
+      const result = await engine.recognize(image);
+      const numbers = candidates(result.data.text);
+      if (numbers.length === 1) {
+        $('lrn').value = numbers\\\\\\\[0];
+        $('message').textContent = 'Possible LRN found. Compare all digits with the ID before using it.';
+      } else {
+        $('lrn').value = '';
+        $('message').textContent = numbers.length ? 'Several possible LRNs found. Type the correct one from the ID.' :
+          'No 12-digit LRN detected. Move closer, improve lighting, and retry, or type the LRN.';
+      }
+    } catch (error) { $('message').textContent = 'OCR failed: '+error.message+'. You can type the LRN.'; }
+    finally { busy = false; $('read').disabled = !stream; $('photo').disabled = false; }
+  }
+  function validLRN() {
+    const value = $('lrn').value.trim();
+    if (!/^\\\\\\\\d{12}$/.test(value)) { $('message').textContent = 'Enter exactly 12 digits.'; return null; }
+    return value;
+  }
+  $('start').addEventListener('click', startCamera);
+  $('stop').addEventListener('click', () => { stopCamera(); $('message').textContent='Camera stopped.'; });
+  $('device').addEventListener('change', startCamera);
+  $('read').addEventListener('click', () => {
+    const video = $('video'), canvas = $('canvas');
+    if (!stream || !video.videoWidth || busy) return;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video,0,0);
+    recognize(canvas);
+  });
+  $('photo').addEventListener('change', async event => {
+    const file = event.target.files\\\\\\\[0];
+    if (file) await recognize(file);
+    event.target.value = '';
+  });
+  $('send').addEventListener('click', () => {
+    const lrn = validLRN();
+    if (!lrn) return;
+    if (!connected || !notify('ATTENDANCE\\\\\\\_LRN\\\\\\\_RESULT', {lrn})) {
+      $('connection').textContent='Automatic transfer is unavailable. Select Copy LRN, return to the app, and paste it.';
+      return;
+    }
+    $('connection').textContent='Sending LRN…';
+    clearTimeout(ackTimer);
+    ackTimer = setTimeout(() => {
+      $('connection').textContent='No confirmation received. Copy the LRN and paste it into the attendance app.';
+    },3000);
+  });
+  $('copy').addEventListener('click', async () => {
+    const lrn = validLRN();
+    if (!lrn) return;
+    try { await navigator.clipboard.writeText(lrn); $('connection').textContent='LRN copied. Return to the attendance app and paste it.'; }
+    catch { $('lrn').focus(); $('lrn').select(); $('connection').textContent='Press and hold the selected LRN and choose Copy, or press Ctrl+C.'; }
+  });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) stopCamera(); });
+  window.addEventListener('pagehide', () => { stopCamera(); if (worker) worker.terminate(); });
+</script>
+</body>
+</html>
+
+```

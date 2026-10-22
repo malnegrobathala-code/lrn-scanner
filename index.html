@@ -1,0 +1,213 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <base target="\\\\\\\_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Student Subject Attendance</title>
+  <style>
+    \\\\\\\*{box-sizing:border-box}body{font:16px Arial,sans-serif;margin:0;background:#eef4f1;color:#19372d}
+    header{background:#164b39;color:white;padding:22px}header h1{font-size:26px;margin:0 0 8px}
+    main{max-width:1100px;margin:auto;padding:18px}.grid{display:grid;grid-template-columns:280px 1fr;gap:18px}
+    .card{background:white;border:1px solid #d4e1da;border-radius:12px;padding:18px;margin-bottom:16px}
+    input,select,button{font:inherit;padding:11px;border:1px solid #a8beb2;border-radius:8px;margin:5px 0}
+    input,select{width:100%}button{cursor:pointer;background:#175d45;color:white}button:disabled{opacity:.5;cursor:default}
+    label{display:block;font-weight:bold;margin-top:12px}.hidden{display:none}.muted{font-size:14px;color:#587265;line-height:1.5}
+    .msg{padding:12px;background:#edf4f0;border-radius:8px;white-space:pre-wrap;line-height:1.5}
+    .scroll{overflow:auto}table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:left;padding:10px;border-bottom:1px solid #dce5df}
+    @media(max-width:760px){.grid{grid-template-columns:1fr}header h1{font-size:22px}}
+  </style>
+</head>
+<body>
+<header><h1>Student Subject Attendance</h1>Live scanner · Subject attendance · Google Sheets</header>
+<main>
+  <div class="card muted"><b>Research prototype:</b> This version preserves the original demo accounts. Use fictional learner records. Demo role selection is not secure authentication.</div>
+  <div class="grid">
+    <aside>
+      <div class="card">
+        <h2>Demo login</h2>
+        <label for="email">Email</label><input id="email" placeholder="student1@gmail.com" autocomplete="off">
+        <label for="role">Role</label><select id="role"><option>Student</option><option>Teacher</option><option>Parent/Guardian</option><option>Administrator</option></select>
+        <button id="login">Sign in</button><button id="logout">Sign out</button>
+        <p class="muted">student1@gmail.com — Alex Santos<br>student2@gmail.com — Jamie Reyes<br>teacher1@gmail.com — Mathematics / Science<br>teacher2@gmail.com — English<br>parent1@gmail.com — Alex Santos<br>parent2@gmail.com — Jamie Reyes<br>admin@gmail.com — Administrator</p>
+        <div id="loginMsg" class="msg" role="status"></div>
+      </div>
+      <div class="card"><b>Signed in</b><p id="who">Nobody</p></div>
+    </aside>
+    <div>
+      <section id="welcome" class="card"><h2>Attendance monitoring</h2><p>Sign in, choose your subject, then open the live scanner. Verify the recognized LRN before recording attendance.</p></section>
+      <section id="student" class="card hidden">
+        <h2>Student attendance</h2>
+        <label for="subject">Subject</label><select id="subject"></select>
+        <button id="scanner">Open live scanner</button>
+        <p class="muted">The scanner opens in its own browser tab. Select Start camera there and allow camera access. Return here after using the scanned LRN.</p>
+        <div id="scanMsg" class="msg" role="status">You may also type the LRN directly.</div>
+        <label for="schoolId">Verified 12-digit LRN</label><input id="schoolId" inputmode="numeric" maxlength="12" placeholder="Enter or paste 12-digit LRN">
+        <button id="record">Record subject attendance</button><button id="refreshStudent">Refresh</button>
+        <div id="studentMsg" class="msg" role="status"></div>
+        <h3>My attendance today</h3><div id="studentRows" class="scroll"></div>
+      </section>
+      <section id="teacher" class="card hidden">
+        <h2>Teacher dashboard</h2><label for="teacherSubject">Assigned subject</label><select id="teacherSubject"></select>
+        <button id="refreshTeacher">Refresh</button><div id="teacherMsg" class="msg" role="status"></div>
+        <div id="teacherRows" class="scroll"></div><h3>Recent changes</h3><div id="auditRows" class="scroll"></div>
+      </section>
+      <section id="parent" class="card hidden"><h2>Parent / Guardian</h2><button id="refreshParent">Refresh</button><div id="parentRows" class="scroll"></div></section>
+      <section id="admin" class="card hidden"><h2>Administrator overview</h2><button id="refreshAdmin">Refresh</button><button id="export">Export CSV</button><div id="adminRows" class="scroll"></div></section>
+    </div>
+  </div>
+</main>
+<script>
+  const $ = id => document.getElementById(id);
+  const students = \\\\\\\[{id:'S01',name:'Alex Santos',lrn:'123456789012'}, {id:'S02',name:'Jamie Reyes',lrn:'123456789013'}];
+  const accounts = {
+    'student1@gmail.com':{role:'Student',sid:'S01'}, 'student2@gmail.com':{role:'Student',sid:'S02'},
+    'teacher1@gmail.com':{role:'Teacher',subjects:\\\\\\\['Mathematics','Science']},
+    'teacher2@gmail.com':{role:'Teacher',subjects:\\\\\\\['English']},
+    'parent1@gmail.com':{role:'Parent/Guardian',sid:'S01'}, 'parent2@gmail.com':{role:'Parent/Guardian',sid:'S02'},
+    'admin@gmail.com':{role:'Administrator'}
+  };
+  const subjects = \\\\\\\['Mathematics','Science','English'];
+  let user = null, scannerURL = '', scannerWindow = null, scanNonce = '', saving = false, sessionVersion = 0;
+  const esc = value => String(value ?? '').replace(/\\\\\\\[\\\\\\\&<>"']/g, c => ({'\\\\\\\&':'\\\\\\\&amp;','<':'\\\\\\\&lt;','>':'\\\\\\\&gt;','"':'\\\\\\\&quot;',"'":'\\\\\\\&#39;'}\\\\\\\[c]));
+  function serverCall(name, ...args) {
+    return new Promise((resolve,reject) => google.script.run.withSuccessHandler(resolve).withFailureHandler(reject)\\\\\\\[name](...args));
+  }
+  function makeTable(headings, rows) {
+    return '<table><thead><tr>'+headings.map(v=>'<th>'+esc(v)+'</th>').join('')+'</tr></thead><tbody>'+rows.join('')+'</tbody></table>';
+  }
+  function populate(id, values) { $(id).replaceChildren(...values.map(v=>new Option(v,v))); }
+  populate('subject',subjects);
+  function currentStudent() { return user \\\\\\\&\\\\\\\& students.find(s=>s.id===user.sid); }
+  async function recordsToday() {
+    const \\\\\\\[records,today] = await Promise.all(\\\\\\\[serverCall('getAttendanceRecords'),serverCall('getTodayDate')]);
+    return {records,today};
+  }
+  function statusFor(records,today,lrn,subject) { return records.find(r=>r.lrn===lrn \\\\\\\&\\\\\\\& r.date===today \\\\\\\&\\\\\\\& r.subject===subject); }
+  function learnerTable(student,records,today) {
+    return makeTable(\\\\\\\['Subject','Status','Time'],subjects.map(subject=>{
+      const row=statusFor(records,today,student.lrn,subject);
+      return '<tr><td>'+esc(subject)+'</td><td>'+esc(row?.status || 'Not Yet Checked')+'</td><td>'+esc(row?.time || '—')+'</td></tr>';
+    }));
+  }
+  async function renderStudent() {
+    const version=sessionVersion, student=currentStudent(); if(!student || user.role!=='Student') return;
+    try { const {records,today}=await recordsToday(); if(version!==sessionVersion)return; $('studentRows').innerHTML=learnerTable(student,records,today); }
+    catch(error) { if(version===sessionVersion)$('studentRows').textContent=error.message; }
+  }
+  async function renderParent() {
+    const version=sessionVersion, student=currentStudent(); if(!student || user.role!=='Parent/Guardian')return;
+    try { const {records,today}=await recordsToday(); if(version!==sessionVersion)return; $('parentRows').innerHTML='<p>Linked student: '+esc(student.name)+'</p>'+learnerTable(student,records,today); }
+    catch(error) { if(version===sessionVersion)$('parentRows').textContent=error.message; }
+  }
+  async function renderTeacher() {
+    if(user?.role!=='Teacher')return;
+    const version=sessionVersion, subject=$('teacherSubject').value, assigned=user.subjects.slice();
+    try {
+      const \\\\\\\[{records,today},audit]=await Promise.all(\\\\\\\[recordsToday(),serverCall('getAuditRecords')]);
+      if(version!==sessionVersion || subject!==$('teacherSubject').value)return;
+      $('teacherRows').innerHTML=makeTable(\\\\\\\['Learner','Status today','Correction'],students.map(student=>{
+        const row=statusFor(records,today,student.lrn,subject);
+        return '<tr><td>'+esc(student.name)+'<br>'+esc(student.lrn)+'</td><td>'+esc(row?.status || 'Not Yet Checked')+'</td><td>'+\\\\\\\['Present','Absent'].map(status=>
+          '<button data-lrn="'+esc(student.lrn)+'" data-status="'+status+'">Mark '+status+'</button>').join(' ')+'</td></tr>';
+      }));
+      $('auditRows').innerHTML=makeTable(\\\\\\\['Time','Learner','Subject','Change','Changed by','Reason'],audit.filter(r=>assigned.includes(r\\\\\\\[3])).slice(0,20).map(r=>
+        '<tr>'+\\\\\\\[r\\\\\\\[0],r\\\\\\\[2],r\\\\\\\[3],r\\\\\\\[4]+' → '+r\\\\\\\[5],r\\\\\\\[6],r\\\\\\\[7]].map(v=>'<td>'+esc(v)+'</td>').join('')+'</tr>'));
+    } catch(error) { if(version===sessionVersion)$('teacherRows').textContent=error.message; }
+  }
+  async function renderAdmin() {
+    if(user?.role!=='Administrator')return;
+    const version=sessionVersion;
+    try { const records=await serverCall('getAttendanceRecords'); if(version!==sessionVersion)return;
+      $('adminRows').innerHTML=makeTable(\\\\\\\['LRN','Learner','Date','Time','Subject','Status'],records.map(r=>'<tr>'+\\\\\\\[r.lrn,r.name,r.date,r.time,r.subject,r.status].map(v=>'<td>'+esc(v)+'</td>').join('')+'</tr>'));
+    } catch(error) { if(version===sessionVersion)$('adminRows').textContent=error.message; }
+  }
+  function logout() {
+    sessionVersion++; user=null; scanNonce='';
+    if(scannerWindow \\\\\\\&\\\\\\\& !scannerWindow.closed)scannerWindow.close(); scannerWindow=null;
+    \\\\\\\['student','teacher','parent','admin'].forEach(id=>$(id).classList.add('hidden'));
+    \\\\\\\['studentRows','teacherRows','auditRows','parentRows','adminRows'].forEach(id=>$(id).replaceChildren());
+    $('welcome').classList.remove('hidden'); $('who').textContent='Nobody'; $('schoolId').value='';
+  }
+  function login() {
+    const email=$('email').value.trim().toLowerCase(), role=$('role').value, account=accounts\\\\\\\[email];
+    if(!account || account.role!==role){$('loginMsg').textContent='Choose a listed demo email and its matching role.';return;}
+    logout(); user={email,...account}; $('who').textContent=email+' ('+role+')'; $('loginMsg').textContent='Demo login successful.';
+    $('welcome').classList.add('hidden'); $({'Student':'student','Teacher':'teacher','Parent/Guardian':'parent','Administrator':'admin'}\\\\\\\[role]).classList.remove('hidden');
+    if(role==='Student'){ $('schoolId').value=currentStudent().lrn; renderStudent(); }
+    if(role==='Teacher'){populate('teacherSubject',account.subjects); renderTeacher();}
+    if(role==='Parent/Guardian')renderParent(); if(role==='Administrator')renderAdmin();
+  }
+  function scannerOrigin() { try{return new URL(scannerURL).origin;}catch{return ''; } }
+  function openScanner() {
+    if(user?.role!=='Student')return;
+    let url;
+    try { url=new URL(scannerURL); if(url.protocol!=='https:')throw new Error(); }
+    catch { $('scanMsg').textContent='Scanner URL is not configured. Host scanner.html over HTTPS, set SCANNER\\\\\\\_URL in Code.gs, then deploy a new version.'; return; }
+    if(scannerWindow \\\\\\\&\\\\\\\& !scannerWindow.closed)scannerWindow.close();
+    scanNonce=Array.from(crypto.getRandomValues(new Uint8Array(16)),v=>v.toString(16).padStart(2,'0')).join('');
+    url.hash=new URLSearchParams({nonce:scanNonce,origin:location.origin}).toString();
+    scannerWindow=window.open(url.href,'\\\\\\\_blank');
+    $('scanMsg').textContent=scannerWindow ? 'Scanner opened. Allow camera there, scan, verify, and select Use LRN. If transfer is unavailable, copy and paste the LRN.' :
+      'The browser blocked the scanner tab. Allow popups for this app, then select Open live scanner again.';
+  }
+  window.addEventListener('message',event=>{
+    if(user?.role!=='Student' || !scannerWindow || event.source!==scannerWindow || event.origin!==scannerOrigin() ||
+      !event.data || !scanNonce || event.data.nonce!==scanNonce)return;
+    if(event.data.type==='ATTENDANCE\\\\\\\_SCANNER\\\\\\\_READY') {
+      scannerWindow.postMessage({type:'ATTENDANCE\\\\\\\_SCANNER\\\\\\\_ACK',nonce:scanNonce},event.origin);
+      $('scanMsg').textContent='Scanner connected. Scan the ID and verify its LRN in the scanner tab.';
+    }
+    if(event.data.type==='ATTENDANCE\\\\\\\_LRN\\\\\\\_RESULT') {
+      const lrn=String(event.data.lrn || ''); if(!/^\\\\\\\\d{12}$/.test(lrn))return;
+      if(lrn!==currentStudent().lrn){$('scanMsg').textContent='The scanned LRN does not match the signed-in demo learner. Check the ID.';return;}
+      $('schoolId').value=lrn;
+      $('scanMsg').textContent='Scanned LRN received. Verify the subject, then select Record subject attendance.';
+      scannerWindow.postMessage({type:'ATTENDANCE\\\\\\\_LRN\\\\\\\_ACK',nonce:scanNonce},event.origin);
+    }
+  });
+  async function checkin() {
+    if(user?.role!=='Student' || saving)return;
+    const lrn=$('schoolId').value.trim(),subject=$('subject').value,version=sessionVersion;
+    if(!/^\\\\\\\\d{12}$/.test(lrn) || lrn!==currentStudent().lrn){$('studentMsg').textContent='Enter the 12-digit LRN matching the signed-in demo learner.';return;}
+    saving=true; $('record').disabled=true; $('studentMsg').textContent='Saving attendance…';
+    try { const result=await serverCall('recordSubjectAttendance',lrn,subject); if(version!==sessionVersion)return;
+      $('studentMsg').textContent=result.message; if(result.success)await renderStudent();
+    } catch(error){if(version===sessionVersion)$('studentMsg').textContent='Unable to save: '+error.message;}
+    finally{saving=false;$('record').disabled=false;}
+  }
+  $('teacherRows').addEventListener('click',async event=>{
+    const button=event.target.closest('button\\\\\\\[data-lrn]'); if(!button || user?.role!=='Teacher')return;
+    const subject=$('teacherSubject').value,status=button.dataset.status,version=sessionVersion;
+    if(!user.subjects.includes(subject))return;
+    const reason=prompt('Reason for marking '+status+':'); if(!reason?.trim())return;
+    button.disabled=true;
+    try { const result=await serverCall('updateSubjectStatus',button.dataset.lrn,subject,status,user.email,reason.trim());
+      if(version!==sessionVersion)return; $('teacherMsg').textContent=result.message; await renderTeacher();
+    } catch(error){if(version===sessionVersion)$('teacherMsg').textContent=error.message;}
+    finally{button.disabled=false;}
+  });
+  async function exportCSV() {
+    if(user?.role!=='Administrator')return;
+    const version=sessionVersion;
+    try {
+      const records=await serverCall('getAttendanceRecords'); if(version!==sessionVersion)return;
+      const rows=\\\\\\\[\\\\\\\['LRN','Student Name','Date','Time','Subject','Status'],...records.map(r=>\\\\\\\[r.lrn,r.name,r.date,r.time,r.subject,r.status])];
+      const csv=rows.map(row=>row.map(value=>{let text=String(value ?? '');if(/^\\\\\\\[=+@-]/.test(text))text="'"+text;return '"'+text.replace(/"/g,'""')+'"';}).join(',')).join('\\\\\\\\r\\\\\\\\n');
+      const url=URL.createObjectURL(new Blob(\\\\\\\['\\\\\\\\ufeff'+csv],{type:'text/csv;charset=utf-8'}));
+      const link=document.createElement('a');link.href=url;link.download='attendance.csv';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+    }catch(error){$('adminRows').textContent=error.message;}
+  }
+  $('login').addEventListener('click',login);$('logout').addEventListener('click',logout);
+  $('scanner').addEventListener('click',openScanner);$('record').addEventListener('click',checkin);
+  $('refreshStudent').addEventListener('click',renderStudent);$('refreshTeacher').addEventListener('click',renderTeacher);
+  $('refreshParent').addEventListener('click',renderParent);$('refreshAdmin').addEventListener('click',renderAdmin);
+  $('teacherSubject').addEventListener('change',renderTeacher);$('export').addEventListener('click',exportCSV);
+  serverCall('getAppConfig').then(config=>{scannerURL=config.scannerURL || '';}).catch(error=>{$('loginMsg').textContent='Configuration error: '+error.message;});
+</script>
+</body>
+</html>
+
+```
+      

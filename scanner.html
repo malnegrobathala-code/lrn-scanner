@@ -1,4 +1,3 @@
-```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -8,7 +7,7 @@
   <title>Live LRN scanner</title>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <style>
-    \\\\\\\*{box-sizing:border-box}body{margin:0;background:#eef4f1;color:#17352c;font:16px Arial,sans-serif}
+    *{box-sizing:border-box}body{margin:0;background:#eef4f1;color:#17352c;font:16px Arial,sans-serif}
     main{max-width:720px;margin:24px auto;padding:24px;background:white;border-radius:16px}
     h1{font-size:26px}p{line-height:1.5}video{width:100%;max-height:420px;background:#15231e;border-radius:12px}
     button,input,select{font:inherit;padding:12px;border:1px solid #a4b9af;border-radius:8px;margin:6px 0}
@@ -30,7 +29,7 @@
   <label for="device">Camera</label>
   <select id="device"><option value="">Default / rear camera</option></select>
   <label for="photo">Or take / upload an ID photo</label>
-  <input id="photo" type="file" accept="image/\\\\\\\*" capture="environment">
+  <input id="photo" type="file" accept="image/*" capture="environment">
   <div id="message" class="message" role="status">Camera not started.</div>
   <label for="lrn">Recognized LRN — verify all 12 digits</label>
   <input id="lrn" inputmode="numeric" maxlength="12" autocomplete="off" placeholder="12-digit LRN">
@@ -50,12 +49,12 @@
   function allowedReturnOrigin(origin) {
     try {
       const url = new URL(origin);
-      return url.origin === origin \\\\\\\&\\\\\\\& url.protocol === 'https:' \\\\\\\&\\\\\\\&
+      return url.origin === origin && url.protocol === 'https:' &&
         (url.hostname === 'script.google.com' || url.hostname === 'script.googleusercontent.com' ||
          url.hostname.endsWith('.script.googleusercontent.com') || url.hostname.endsWith('-script.googleusercontent.com'));
     } catch { return false; }
   }
-  const hasReturn = allowedReturnOrigin(returnOrigin) \\\\\\\&\\\\\\\& /^\\\\\\\[a-f0-9]{32}$/.test(nonce) \\\\\\\&\\\\\\\& !!window.opener;
+  const hasReturn = allowedReturnOrigin(returnOrigin) && /^[a-f0-9]{32}$/.test(nonce) && !!window.opener;
   function notify(type, extra = {}) {
     if (!hasReturn) return false;
     try { window.opener.postMessage({type, nonce, ...extra}, returnOrigin); return true; }
@@ -64,19 +63,19 @@
   window.addEventListener('message', event => {
     if (!hasReturn || event.origin !== returnOrigin || event.source !== window.opener ||
         !event.data || event.data.nonce !== nonce) return;
-    if (event.data.type === 'ATTENDANCE\\\\\\\_SCANNER\\\\\\\_ACK') {
+    if (event.data.type === 'ATTENDANCE_SCANNER_ACK') {
       connected = true;
       $('connection').textContent = 'Connected to the attendance app. Scan, verify, then select Use LRN.';
     }
-    if (event.data.type === 'ATTENDANCE\\\\\\\_LRN\\\\\\\_ACK') {
+    if (event.data.type === 'ATTENDANCE_LRN_ACK') {
       clearTimeout(ackTimer);
       stopCamera();
       $('connection').textContent = 'LRN received by the attendance app. Return to that tab and select Record subject attendance.';
     }
   });
-  if (hasReturn) notify('ATTENDANCE\\\\\\\_SCANNER\\\\\\\_READY');
+  if (hasReturn) notify('ATTENDANCE_SCANNER_READY');
   const handshakeTimer = setInterval(() => {
-    if (!connected \\\\\\\&\\\\\\\& hasReturn) notify('ATTENDANCE\\\\\\\_SCANNER\\\\\\\_READY');
+    if (!connected && hasReturn) notify('ATTENDANCE_SCANNER_READY');
     else clearInterval(handshakeTimer);
   }, 1500);
   setTimeout(() => clearInterval(handshakeTimer), 30000);
@@ -104,7 +103,7 @@
       $('video').srcObject = stream;
       await $('video').play();
       const devices = await navigator.mediaDevices.enumerateDevices();
-      const selected = stream.getVideoTracks()\\\\\\\[0].getSettings().deviceId || '';
+      const selected = stream.getVideoTracks()[0].getSettings().deviceId || '';
       $('device').replaceChildren(new Option('Default / rear camera',''));
       devices.filter(d => d.kind === 'videoinput').forEach((d, i) =>
         $('device').add(new Option(d.label || 'Camera '+(i+1), d.deviceId)));
@@ -119,14 +118,14 @@
         NotReadableError:'The camera is unavailable or being used by another app. Close other camera apps and retry.',
         OverconstrainedError:'The selected camera is unavailable. Choose the default camera and retry.'
       };
-      $('message').textContent = help\\\\\\\[error.name] || error.message;
+      $('message').textContent = help[error.name] || error.message;
     } finally { $('start').disabled = false; }
   }
   async function getWorker() {
     if (!window.Tesseract) throw new Error('OCR library could not load. Check the internet connection or type the LRN.');
     if (!workerPromise) workerPromise = (async () => {
       const created = await Tesseract.createWorker('eng');
-      await created.setParameters({tessedit\\\\\\\_char\\\\\\\_whitelist:'0123456789 -\\\\\\\\n'});
+      await created.setParameters({tessedit_char_whitelist:'0123456789 -\n'});
       worker = created;
       return worker;
     })().catch(error => { workerPromise = null; throw error; });
@@ -134,10 +133,10 @@
   }
   function candidates(text) {
     // Require digit boundaries; do not accept a 12-digit substring of a longer number.
-    const found = \\\\\\\[];
-    const regex = /(?:^|\\\\\\\[^\\\\\\\\d])((?:\\\\\\\\d\\\\\\\[ \\\\\\\\t-]\\\\\\\*){11}\\\\\\\\d)(?!\\\\\\\[ \\\\\\\\t-]\\\\\\\*\\\\\\\\d)/g;
-    for (const match of String(text || '').matchAll(regex)) found.push(match\\\\\\\[1].replace(/\\\\\\\\D/g,''));
-    return \\\\\\\[...new Set(found)];
+    const found = [];
+    const regex = /(?:^|[^\d])((?:\d[ \t-]*){11}\d)(?![ \t-]*\d)/g;
+    for (const match of String(text || '').matchAll(regex)) found.push(match[1].replace(/\D/g,''));
+    return [...new Set(found)];
   }
   async function recognize(image) {
     if (busy) return;
@@ -150,7 +149,7 @@
       const result = await engine.recognize(image);
       const numbers = candidates(result.data.text);
       if (numbers.length === 1) {
-        $('lrn').value = numbers\\\\\\\[0];
+        $('lrn').value = numbers[0];
         $('message').textContent = 'Possible LRN found. Compare all digits with the ID before using it.';
       } else {
         $('lrn').value = '';
@@ -162,7 +161,7 @@
   }
   function validLRN() {
     const value = $('lrn').value.trim();
-    if (!/^\\\\\\\\d{12}$/.test(value)) { $('message').textContent = 'Enter exactly 12 digits.'; return null; }
+    if (!/^\d{12}$/.test(value)) { $('message').textContent = 'Enter exactly 12 digits.'; return null; }
     return value;
   }
   $('start').addEventListener('click', startCamera);
@@ -177,14 +176,14 @@
     recognize(canvas);
   });
   $('photo').addEventListener('change', async event => {
-    const file = event.target.files\\\\\\\[0];
+    const file = event.target.files[0];
     if (file) await recognize(file);
     event.target.value = '';
   });
   $('send').addEventListener('click', () => {
     const lrn = validLRN();
     if (!lrn) return;
-    if (!connected || !notify('ATTENDANCE\\\\\\\_LRN\\\\\\\_RESULT', {lrn})) {
+    if (!connected || !notify('ATTENDANCE_LRN_RESULT', {lrn})) {
       $('connection').textContent='Automatic transfer is unavailable. Select Copy LRN, return to the app, and paste it.';
       return;
     }
@@ -205,5 +204,3 @@
 </script>
 </body>
 </html>
-
-```

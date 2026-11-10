@@ -1,206 +1,432 @@
+
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="referrer" content="no-referrer">
-  <title>Live LRN scanner</title>
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#123c69">
+
+  <title>SCNHS QR Scanner</title>
+
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+
   <style>
-    *{box-sizing:border-box}body{margin:0;background:#eef4f1;color:#17352c;font:16px Arial,sans-serif}
-    main{max-width:720px;margin:24px auto;padding:24px;background:white;border-radius:16px}
-    h1{font-size:26px}p{line-height:1.5}video{width:100%;max-height:420px;background:#15231e;border-radius:12px}
-    button,input,select{font:inherit;padding:12px;border:1px solid #a4b9af;border-radius:8px;margin:6px 0}
-    button{cursor:pointer;background:#185d46;color:white}button:disabled{opacity:.5;cursor:default}
-    input,select{width:100%}label{display:block;font-weight:bold;margin-top:16px}
-    .message{background:#eef4f1;padding:14px;border-radius:8px;white-space:pre-wrap;line-height:1.5}
-    .muted{color:#536b61;font-size:14px}@media(max-width:760px){main{margin:0;border-radius:0;padding:18px}}
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f1f5f9;
+      color: #1e293b;
+    }
+
+    header {
+      background: #123c69;
+      color: white;
+      text-align: center;
+      padding: 22px 14px;
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: 23px;
+    }
+
+    main {
+      max-width: 680px;
+      margin: 22px auto;
+      padding: 0 14px;
+    }
+
+    .card {
+      background: white;
+      padding: 20px;
+      border-radius: 13px;
+      box-shadow: 0 3px 14px #00000012;
+      margin-bottom: 16px;
+    }
+
+    h2 {
+      color: #123c69;
+      margin-top: 0;
+    }
+
+    .button {
+      border: 0;
+      border-radius: 8px;
+      padding: 12px 16px;
+      background: #123c69;
+      color: white;
+      font-size: 15px;
+      font-weight: bold;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-block;
+      margin: 5px 5px 5px 0;
+    }
+
+    .gray {
+      background: #64748b;
+    }
+
+    .green {
+      background: #15803d;
+    }
+
+    input {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      font-size: 15px;
+      margin: 8px 0 12px;
+    }
+
+    #reader {
+      width: 100%;
+      max-width: 480px;
+      margin: 12px auto;
+    }
+
+    #reader video {
+      border-radius: 10px;
+    }
+
+    .message {
+      padding: 12px;
+      border-radius: 8px;
+      background: #eff6ff;
+      color: #1e40af;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+      margin: 12px 0;
+    }
+
+    .error {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+
+    .success {
+      background: #dcfce7;
+      color: #166534;
+    }
+
+    .muted {
+      font-size: 13px;
+      color: #64748b;
+      line-height: 1.5;
+    }
+
+    #openLink {
+      display: none;
+    }
+
+    footer {
+      text-align: center;
+      color: #64748b;
+      font-size: 12px;
+      padding: 20px;
+    }
   </style>
 </head>
+
 <body>
-<main>
-  <h1>Live LRN scanner</h1>
-  <p>Start the camera. Hold the ID steady so the 12-digit LRN is clear, then select <b>Read LRN</b>.</p>
-  <video id="video" autoplay playsinline muted></video>
-  <canvas id="canvas" hidden></canvas>
-  <button id="start" type="button">Start camera</button>
-  <button id="read" type="button" disabled>Read LRN</button>
-  <button id="stop" type="button">Stop camera</button>
-  <label for="device">Camera</label>
-  <select id="device"><option value="">Default / rear camera</option></select>
-  <label for="photo">Or take / upload an ID photo</label>
-  <input id="photo" type="file" accept="image/*" capture="environment">
-  <div id="message" class="message" role="status">Camera not started.</div>
-  <label for="lrn">Recognized LRN — verify all 12 digits</label>
-  <input id="lrn" inputmode="numeric" maxlength="12" autocomplete="off" placeholder="12-digit LRN">
-  <button id="send" type="button">Use LRN in attendance app</button>
-  <button id="copy" type="button">Copy LRN</button>
-  <p id="connection" class="muted">You can copy the LRN and paste it into the attendance app.</p>
-  <p class="muted">Images are processed in this browser. This page does not save attendance or upload ID photos to your Google Sheet. OCR can misread digits; verify the result.</p>
-</main>
-<script>
-  const $ = id => document.getElementById(id);
-  const params = new URLSearchParams(location.hash.slice(1));
-  const nonce = params.get('nonce') || '';
-  const returnOrigin = params.get('origin') || '';
-  let stream = null, worker = null, workerPromise = null, busy = false, connected = false;
-  let cameraRequest = 0, ackTimer = null;
 
-  function allowedReturnOrigin(origin) {
-    try {
-      const url = new URL(origin);
-      return url.origin === origin && url.protocol === 'https:' &&
-        (url.hostname === 'script.google.com' || url.hostname === 'script.googleusercontent.com' ||
-         url.hostname.endsWith('.script.googleusercontent.com') || url.hostname.endsWith('-script.googleusercontent.com'));
-    } catch { return false; }
-  }
-  const hasReturn = allowedReturnOrigin(returnOrigin) && /^[a-f0-9]{32}$/.test(nonce) && !!window.opener;
-  function notify(type, extra = {}) {
-    if (!hasReturn) return false;
-    try { window.opener.postMessage({type, nonce, ...extra}, returnOrigin); return true; }
-    catch { return false; }
-  }
-  window.addEventListener('message', event => {
-    if (!hasReturn || event.origin !== returnOrigin || event.source !== window.opener ||
-        !event.data || event.data.nonce !== nonce) return;
-    if (event.data.type === 'ATTENDANCE_SCANNER_ACK') {
-      connected = true;
-      $('connection').textContent = 'Connected to the attendance app. Scan, verify, then select Use LRN.';
-    }
-    if (event.data.type === 'ATTENDANCE_LRN_ACK') {
-      clearTimeout(ackTimer);
-      stopCamera();
-      $('connection').textContent = 'LRN received by the attendance app. Return to that tab and select Record subject attendance.';
-    }
-  });
-  if (hasReturn) notify('ATTENDANCE_SCANNER_READY');
-  const handshakeTimer = setInterval(() => {
-    if (!connected && hasReturn) notify('ATTENDANCE_SCANNER_READY');
-    else clearInterval(handshakeTimer);
-  }, 1500);
-  setTimeout(() => clearInterval(handshakeTimer), 30000);
+  <header>
+    <h1>SCNHS QR Scanner</h1>
+  </header>
 
-  function stopCamera() {
-    cameraRequest++;
-    if (stream) stream.getTracks().forEach(track => track.stop());
-    stream = null;
-    $('video').srcObject = null;
-    $('read').disabled = true;
-  }
-  async function startCamera() {
-    stopCamera();
-    const request = cameraRequest;
-    $('start').disabled = true;
-    try {
-      if (window.top !== window.self) throw new Error('Open the scanner URL directly in a new browser tab, not inside an embedded page.');
-      if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia)
-        throw new Error('Open the hosted HTTPS scanner URL in Chrome or Safari. Do not open the downloaded file directly.');
-      const deviceId = $('device').value;
-      const acquired = await navigator.mediaDevices.getUserMedia({audio:false, video: deviceId ?
-        {deviceId:{exact:deviceId}} : {facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}}});
-      if (request !== cameraRequest) { acquired.getTracks().forEach(track => track.stop()); return; }
-      stream = acquired;
-      $('video').srcObject = stream;
-      await $('video').play();
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const selected = stream.getVideoTracks()[0].getSettings().deviceId || '';
-      $('device').replaceChildren(new Option('Default / rear camera',''));
-      devices.filter(d => d.kind === 'videoinput').forEach((d, i) =>
-        $('device').add(new Option(d.label || 'Camera '+(i+1), d.deviceId)));
-      $('device').value = selected;
-      $('read').disabled = busy;
-      $('message').textContent = 'Camera ready. Keep the LRN in focus, then select Read LRN.';
-    } catch (error) {
-      stopCamera();
-      const help = {
-        NotAllowedError:'Camera permission was denied or blocked. Allow camera for this scanner website in browser settings and device settings, then retry.',
-        NotFoundError:'No camera was detected. Connect a camera or use an ID photo.',
-        NotReadableError:'The camera is unavailable or being used by another app. Close other camera apps and retry.',
-        OverconstrainedError:'The selected camera is unavailable. Choose the default camera and retry.'
-      };
-      $('message').textContent = help[error.name] || error.message;
-    } finally { $('start').disabled = false; }
-  }
-  async function getWorker() {
-    if (!window.Tesseract) throw new Error('OCR library could not load. Check the internet connection or type the LRN.');
-    if (!workerPromise) workerPromise = (async () => {
-      const created = await Tesseract.createWorker('eng');
-      await created.setParameters({tessedit_char_whitelist:'0123456789 -\n'});
-      worker = created;
-      return worker;
-    })().catch(error => { workerPromise = null; throw error; });
-    return workerPromise;
-  }
-  function candidates(text) {
-    // Require digit boundaries; do not accept a 12-digit substring of a longer number.
-    const found = [];
-    const regex = /(?:^|[^\d])((?:\d[ \t-]*){11}\d)(?![ \t-]*\d)/g;
-    for (const match of String(text || '').matchAll(regex)) found.push(match[1].replace(/\D/g,''));
-    return [...new Set(found)];
-  }
-  async function recognize(image) {
-    if (busy) return;
-    busy = true;
-    $('read').disabled = true;
-    $('photo').disabled = true;
-    $('message').textContent = 'Reading LRN… The first scan downloads the OCR model.';
-    try {
-      const engine = await getWorker();
-      const result = await engine.recognize(image);
-      const numbers = candidates(result.data.text);
-      if (numbers.length === 1) {
-        $('lrn').value = numbers[0];
-        $('message').textContent = 'Possible LRN found. Compare all digits with the ID before using it.';
-      } else {
-        $('lrn').value = '';
-        $('message').textContent = numbers.length ? 'Several possible LRNs found. Type the correct one from the ID.' :
-          'No 12-digit LRN detected. Move closer, improve lighting, and retry, or type the LRN.';
+  <main>
+
+    <section class="card">
+
+      <h2>Scan Student QR Code</h2>
+
+      <p class="muted">
+        Allow camera access, then position the student's
+        QR code inside the scanning frame.
+      </p>
+
+      <div id="reader"></div>
+
+      <button
+        class="button"
+        id="startButton"
+        type="button"
+        onclick="startScanner()">
+        Start Camera
+      </button>
+
+      <button
+        class="button gray"
+        type="button"
+        onclick="stopScanner()">
+        Stop Camera
+      </button>
+
+      <div id="message" class="message">
+        Scanner is ready. Tap Start Camera.
+      </div>
+
+      <a
+        id="openLink"
+        class="button green"
+        href="#"
+        target="_blank"
+        rel="noopener">
+        Open Student Attendance Page
+      </a>
+
+    </section>
+
+    <section class="card">
+
+      <h2>Enter a QR Link Manually</h2>
+
+      <p class="muted">
+        If the camera cannot scan the code, paste the
+        full link encoded in the QR code below.
+      </p>
+
+      <input
+        id="manualUrl"
+        type="url"
+        placeholder="Paste the student's Apps Script QR link here">
+
+      <button
+        class="button"
+        type="button"
+        onclick="useManualLink()">
+        Check Link
+      </button>
+
+    </section>
+
+    <section class="card">
+
+      <a class="button gray" href="index.html">
+        Back to Home
+      </a>
+
+      <p class="muted">
+        Only SCNHS student QR links from the deployed
+        Google Apps Script web app are accepted by this scanner.
+      </p>
+
+    </section>
+
+  </main>
+
+  <footer>
+    SCNHS Student Attendance System
+  </footer>
+
+  <script>
+
+    let scanner = null;
+    let isScanning = false;
+    let lastScannedUrl = "";
+
+    function showMessage(text, type) {
+
+      const box = document.getElementById("message");
+
+      box.className = "message" + (type ? " " + type : "");
+
+      box.textContent = text;
+    }
+
+    // Validate the student QR link.
+    function validateStudentUrl(rawValue) {
+
+      let url;
+
+      try {
+        url = new URL(String(rawValue || "").trim());
+      } catch (e) {
+        throw new Error(
+          "The QR code does not contain a valid web link."
+        );
       }
-    } catch (error) { $('message').textContent = 'OCR failed: '+error.message+'. You can type the LRN.'; }
-    finally { busy = false; $('read').disabled = !stream; $('photo').disabled = false; }
-  }
-  function validLRN() {
-    const value = $('lrn').value.trim();
-    if (!/^\d{12}$/.test(value)) { $('message').textContent = 'Enter exactly 12 digits.'; return null; }
-    return value;
-  }
-  $('start').addEventListener('click', startCamera);
-  $('stop').addEventListener('click', () => { stopCamera(); $('message').textContent='Camera stopped.'; });
-  $('device').addEventListener('change', startCamera);
-  $('read').addEventListener('click', () => {
-    const video = $('video'), canvas = $('canvas');
-    if (!stream || !video.videoWidth || busy) return;
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    canvas.getContext('2d').drawImage(video,0,0);
-    recognize(canvas);
-  });
-  $('photo').addEventListener('change', async event => {
-    const file = event.target.files[0];
-    if (file) await recognize(file);
-    event.target.value = '';
-  });
-  $('send').addEventListener('click', () => {
-    const lrn = validLRN();
-    if (!lrn) return;
-    if (!connected || !notify('ATTENDANCE_LRN_RESULT', {lrn})) {
-      $('connection').textContent='Automatic transfer is unavailable. Select Copy LRN, return to the app, and paste it.';
-      return;
+
+      const allowedHosts = [
+        "script.google.com",
+        "script.googleusercontent.com"
+      ];
+
+      if (
+        url.protocol !== "https:" ||
+        !allowedHosts.includes(url.hostname)
+      ) {
+        throw new Error(
+          "This is not an approved SCNHS Apps Script QR link."
+        );
+      }
+
+      const token = url.searchParams.get("token");
+
+      if (!token || !/^[a-f0-9]{64}$/i.test(token)) {
+        throw new Error(
+          "The link does not contain a valid student QR token."
+        );
+      }
+
+      return url.href;
     }
-    $('connection').textContent='Sending LRN…';
-    clearTimeout(ackTimer);
-    ackTimer = setTimeout(() => {
-      $('connection').textContent='No confirmation received. Copy the LRN and paste it into the attendance app.';
-    },3000);
-  });
-  $('copy').addEventListener('click', async () => {
-    const lrn = validLRN();
-    if (!lrn) return;
-    try { await navigator.clipboard.writeText(lrn); $('connection').textContent='LRN copied. Return to the attendance app and paste it.'; }
-    catch { $('lrn').focus(); $('lrn').select(); $('connection').textContent='Press and hold the selected LRN and choose Copy, or press Ctrl+C.'; }
-  });
-  document.addEventListener('visibilitychange', () => { if (document.hidden) stopCamera(); });
-  window.addEventListener('pagehide', () => { stopCamera(); if (worker) worker.terminate(); });
-</script>
+
+    function showOpenButton(url) {
+
+      lastScannedUrl = url;
+
+      const link = document.getElementById("openLink");
+
+      link.href = url;
+      link.style.display = "inline-block";
+
+      showMessage(
+        "Valid student QR code detected. Tap the green button to open the attendance page.",
+        "success"
+      );
+    }
+
+    async function startScanner() {
+
+      if (typeof Html5Qrcode === "undefined") {
+
+        showMessage(
+          "The scanner library could not load. Check your internet connection and reload this page.",
+          "error"
+        );
+
+        return;
+      }
+
+      if (isScanning) return;
+
+      document.getElementById("openLink").style.display = "none";
+
+      try {
+
+        if (!scanner) {
+          scanner = new Html5Qrcode("reader");
+        }
+
+        const cameras = await Html5Qrcode.getCameras();
+
+        if (!cameras || cameras.length === 0) {
+          throw new Error(
+            "No camera was found on this device."
+          );
+        }
+
+        const camera =
+          cameras.find(c =>
+            /back|rear|environment/i.test(c.label)
+          ) || cameras[0];
+
+        await scanner.start(
+
+          camera.id,
+
+          {
+            fps: 10,
+            qrbox: {
+              width: 240,
+              height: 240
+            },
+            aspectRatio: 1.0
+          },
+
+          decodedText => {
+
+            try {
+
+              const validUrl =
+                validateStudentUrl(decodedText);
+
+              stopScanner();
+
+              showOpenButton(validUrl);
+
+            } catch (error) {
+
+              showMessage(
+                error.message || String(error),
+                "error"
+              );
+
+            }
+
+          },
+
+          () => {}
+
+        );
+
+        isScanning = true;
+
+        showMessage(
+          "Camera is on. Hold the QR code steady inside the frame."
+        );
+
+      } catch (error) {
+
+        isScanning = false;
+
+        showMessage(
+          error.message || String(error),
+          "error"
+        );
+
+      }
+    }
+
+    async function stopScanner() {
+
+      if (scanner && isScanning) {
+
+        try {
+          await scanner.stop();
+        } catch (e) {}
+
+        isScanning = false;
+      }
+    }
+
+    function useManualLink() {
+
+      try {
+
+        const validUrl = validateStudentUrl(
+          document.getElementById("manualUrl").value
+        );
+
+        showOpenButton(validUrl);
+
+      } catch (error) {
+
+        document.getElementById("openLink").style.display = "none";
+
+        showMessage(
+          error.message || String(error),
+          "error"
+        );
+
+      }
+    }
+
+    document.addEventListener(
+      "visibilitychange",
+      () => {
+        if (document.hidden) stopScanner();
+      }
+    );
+
+  </script>
+
 </body>
 </html>

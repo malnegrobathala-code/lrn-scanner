@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -5,42 +6,154 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#123c69">
   <title>SCNHS Attendance Portal</title>
+
   <style>
-    *{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#f1f5f9;color:#1e293b}
-    header{background:#123c69;color:#fff;text-align:center;padding:30px 16px}header h1{margin:0 0 8px;font-size:25px}header p{margin:0;opacity:.9}
-    main{max-width:720px;margin:28px auto;padding:0 16px}.card{background:#fff;padding:24px;border-radius:14px;box-shadow:0 3px 14px #00000012;margin-bottom:18px}
-    h2{color:#123c69;margin-top:0}.button{display:block;text-align:center;text-decoration:none;background:#123c69;color:#fff;padding:14px 18px;border-radius:9px;font-weight:bold;margin:12px 0}
-    .secondary{background:#e2e8f0;color:#123c69}.note{background:#eff6ff;border-left:4px solid #2563eb;padding:13px;border-radius:6px;line-height:1.55}
-    li{margin:10px 0;line-height:1.5}.muted{font-size:13px;color:#64748b;line-height:1.5}footer{text-align:center;color:#64748b;padding:20px;font-size:12px}
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f1f5f9;
+      color: #1e293b;
+    }
+
+    header {
+      background: #123c69;
+      color: white;
+      text-align: center;
+      padding: 30px 16px;
+    }
+
+    header h1 {
+      margin: 0 0 8px;
+      font-size: 25px;
+    }
+
+    header p {
+      margin: 0;
+      opacity: .9;
+    }
+
+    main {
+      max-width: 720px;
+      margin: 28px auto;
+      padding: 0 16px;
+    }
+
+    .card {
+      background: white;
+      padding: 24px;
+      border-radius: 14px;
+      box-shadow: 0 3px 14px #00000012;
+      margin-bottom: 18px;
+    }
+
+    h2 {
+      color: #123c69;
+      margin-top: 0;
+    }
+
+    .button {
+      display: block;
+      text-align: center;
+      text-decoration: none;
+      background: #123c69;
+      color: white;
+      padding: 14px 18px;
+      border-radius: 9px;
+      font-weight: bold;
+      margin: 12px 0;
+    }
+
+    .note {
+      background: #eff6ff;
+      border-left: 4px solid #2563eb;
+      padding: 13px;
+      border-radius: 6px;
+      line-height: 1.55;
+    }
+
+    li {
+      margin: 10px 0;
+      line-height: 1.5;
+    }
+
+    .muted {
+      font-size: 13px;
+      color: #64748b;
+      line-height: 1.5;
+    }
+
+    footer {
+      text-align: center;
+      color: #64748b;
+      padding: 20px;
+      font-size: 12px;
+    }
   </style>
 </head>
+
 <body>
+
   <header>
     <h1>SCNHS Attendance Portal</h1>
-    <p>Student QR attendance access</p>
+    <p>Student QR Attendance Access</p>
   </header>
+
   <main>
+
     <section class="card">
       <h2>Welcome</h2>
-      <p>Use the scanner to read a student's SCNHS attendance QR code. After a valid QR code is scanned, the student's attendance page will open.</p>
-      <a class="button" href="scanner.html">Open QR Scanner</a>
+
+      <p>
+        Use the scanner to read a student's SCNHS
+        attendance QR code. After a valid QR code
+        is scanned, the student's attendance page
+        will open.
+      </p>
+
+      <a class="button" href="scanner.html">
+        Open QR Scanner
+      </a>
     </section>
+
     <section class="card">
-      <h2>How to use</h2>
+      <h2>How to Use</h2>
+
       <ol>
         <li>Open this website using a phone with a camera.</li>
-        <li>Tap <strong>Open QR Scanner</strong>.</li>
+        <li>Tap Open QR Scanner.</li>
         <li>Allow camera access when your browser asks.</li>
         <li>Point the camera at the student's QR code.</li>
         <li>When the QR is recognized, tap the button to open the attendance page.</li>
       </ol>
-      <div class="note"><strong>Important:</strong> The QR code created by the Apps Script QR Manager contains a private student link. Keep each student's QR code confidential.</div>
+
+      <div class="note">
+        <strong>Important:</strong>
+        The QR code created by the Apps Script QR Manager
+        contains a private student link. Keep each
+        student's QR code confidential.
+      </div>
     </section>
+
     <section class="card">
-      <h2>Camera permission</h2>
-      <p class="muted">The scanner requires HTTPS. GitHub Pages provides HTTPS automatically. If camera access is blocked, open the site in your phone's regular browser and allow camera permission in the browser settings.</p>
+      <h2>Camera Permission</h2>
+
+      <p class="muted">
+        The scanner requires HTTPS. GitHub Pages provides
+        HTTPS automatically. If camera access is blocked,
+        open the site in your phone's regular browser and
+        allow camera permission in the browser settings.
+      </p>
     </section>
+
   </main>
-  <footer>SCNHS Student Attendance System</footer>
+
+  <footer>
+    SCNHS Student Attendance System
+  </footer>
+
 </body>
 </html>

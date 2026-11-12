@@ -1,19 +1,155 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>SCNHS Gate QR Scanner</title><script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script><style>body{font:16px Arial;background:#edf3f7;color:#19324a;margin:0}main{max-width:700px;margin:20px auto;background:white;padding:24px;border-radius:14px}button,input{font:inherit;padding:12px;margin:8px 4px 8px 0}button{background:#125d62;color:white;border:0;border-radius:6px}#message{padding:16px;white-space:pre-wrap;background:#e4f3ef;margin:15px 0}#reader{width:100%}label{display:block;margin-top:15px}input{max-width:95%}.small{font-size:14px;color:#536b7b}</style></head><body><main><h1>SCNHS QR scanner</h1><p>Scan a learner's assigned QR card. Keep the attendance app open in its original tab.</p><div id="message" role="status">Connecting to attendance app…</div><button id="start">Start camera</button><button id="stop">Stop camera</button><div id="reader"></div><label>Or scan a QR image<input id="photo" type="file" accept="image/*"></label><button id="next">Ready for next learner / retry</button><label>Last decoded QR<input id="payload" readonly></label><button id="copy">Copy QR payload</button><p class="small">Camera processing stays in this browser. Only the decoded QR token is sent to your open attendance app. Wait for confirmation before the learner proceeds.</p></main><script>
-const $=id=>document.getElementById(id),params=new URLSearchParams(location.hash.slice(1)),origin=params.get('origin')||'',nonce=params.get('nonce')||'';
-function validOrigin(o){try{const u=new URL(o);return u.origin===o&&u.protocol==='https:'&&(u.hostname==='script.google.com'||u.hostname==='script.googleusercontent.com'||u.hostname.endsWith('.script.googleusercontent.com')||u.hostname.endsWith('-script.googleusercontent.com'));}catch{return false;}}
-const paired=validOrigin(origin)&&/^[a-f0-9]{32}$/.test(nonce)&&!!window.opener;let connected=false,reader=null,running=false,pending=false,latched=false,timer=null,starting=false;
-function message(s){$('message').textContent=s;}
-function post(type,extra={}){if(paired)window.opener.postMessage({type,nonce,...extra},origin);}
-window.addEventListener('message',e=>{if(!paired||e.origin!==origin||e.source!==window.opener||e.data?.nonce!==nonce)return;if(e.data.type==='QR_READY_ACK'){connected=true;message('Connected. Start camera and scan a learner QR.');}if(e.data.type==='QR_SAVED'){clearTimeout(timer);pending=false;latched=true;message((e.data.success?'SAVED: ':'NOT SAVED: ')+e.data.message+'\nSelect Ready for next learner to continue.');}});
-post('QR_READY');const handshake=setInterval(()=>{if(connected)clearInterval(handshake);else post('QR_READY');},1500);setTimeout(()=>clearInterval(handshake),30000);
-if(!paired)message('Open this scanner using the attendance app button. You may also decode here and copy the QR payload back to the app.');
-function decoded(text){if(pending||latched)return;if(!/^SCNHS:[a-f0-9]{64}$/.test(text)){latched=true;message('This is not an assigned SCNHS QR. Select Ready for next learner and try again.');return;}$('payload').value=text;latched=true;if(!connected){message('No connection to attendance app. Copy the QR payload and paste it in the app fallback field.');return;}pending=true;post('QR_RESULT',{payload:text});message('Saving attendance… Please wait.');timer=setTimeout(()=>{pending=false;message('No save confirmation received. Check today’s attendance in the app before retrying. Repeated scans will not create a second arrival.');},25000);}
-function getReader(){if(!window.Html5Qrcode)throw Error('Scanner library did not load. Check your internet connection and refresh.');return reader||(reader=new Html5Qrcode('reader'));}
-async function stop(){if(reader&&running){await reader.stop();running=false;}}
-$('start').onclick=async()=>{if(starting||running)return;starting=true;try{if(!isSecureContext||!navigator.mediaDevices)throw Error('Open the hosted HTTPS scanner page in Chrome or Safari.');await getReader().start({facingMode:'environment'},{fps:10,qrbox:{width:240,height:240}},decoded,()=>{});running=true;message('Camera ready. Scan a QR card.');}catch(e){message('Camera unavailable: '+(e.message||e)+'. Allow camera permission or use a QR image.');}finally{starting=false;}};
-$('stop').onclick=()=>stop().then(()=>message('Camera stopped.')).catch(e=>message(String(e)));
-$('next').onclick=()=>{if(pending){message('Wait for the current save to finish.');return;}latched=false;$('payload').value='';message('Ready. Remove the previous QR card, then present the next learner.');};
-$('photo').onchange=async e=>{const file=e.target.files[0];if(!file||pending)return;try{await stop();latched=false;decoded(await getReader().scanFile(file,true));}catch(error){message('No readable QR found: '+(error.message||error));}finally{e.target.value='';}};
-$('copy').onclick=async()=>{try{await navigator.clipboard.writeText($('payload').value);message('QR payload copied. Paste it into the attendance app.');}catch{$('payload').select();message('Select and copy the QR payload manually.');}};
-document.addEventListener('visibilitychange',()=>{if(document.hidden)stop().catch(()=>{});});window.addEventListener('pagehide',()=>{stop().catch(()=>{});});
-</script></body></html>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#123c69">
+  <title>SCNHS QR Scanner</title>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Arial,sans-serif;background:#f1f5f9;color:#1e293b}
+    header{background:#123c69;color:white;text-align:center;padding:22px 14px}
+    main{max-width:680px;margin:22px auto;padding:0 14px}
+    .card{background:white;padding:20px;border-radius:13px;margin-bottom:16px}
+    h2{color:#123c69}
+    .button{border:0;border-radius:8px;padding:12px 16px;background:#123c69;color:white;font-size:15px;font-weight:bold;cursor:pointer;text-decoration:none;display:inline-block;margin:5px}
+    .gray{background:#64748b}
+    .green{background:#15803d}
+    input{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:8px}
+    #reader{width:100%;max-width:480px;margin:12px auto}
+    .message{padding:12px;border-radius:8px;background:#eff6ff;color:#1e40af;margin:12px 0}
+    .error{background:#fee2e2;color:#991b1b}
+    .success{background:#dcfce7;color:#166534}
+    .muted{font-size:13px;color:#64748b;line-height:1.5}
+    #openLink{display:none}
+  </style>
+</head>
+<body>
+<header><h1>SCNHS QR Scanner</h1></header>
+<main>
+  <section class="card">
+    <h2>Scan student QR code</h2>
+    <p class="muted">Allow camera access and position the QR code inside the scanning frame.</p>
+    <div id="reader"></div>
+    <button class="button" onclick="startScanner()">Start Camera</button>
+    <button class="button gray" onclick="stopScanner()">Stop Camera</button>
+    <div id="message" class="message">Scanner is ready.</div>
+    <a id="openLink" class="button green" href="#" target="_blank" rel="noopener">Open Student Attendance Page</a>
+  </section>
+
+  <section class="card">
+    <h2>Enter a QR link manually</h2>
+    <input id="manualUrl" type="url" placeholder="Paste student QR link">
+    <button class="button" onclick="useManualLink()">Check Link</button>
+  </section>
+</main>
+
+<script>
+let scanner = null;
+let isScanning = false;
+
+function showMessage(text,type){
+  const box=document.getElementById("message");
+  box.className="message"+(type?" "+type:"");
+  box.textContent=text;
+}
+
+function validateStudentUrl(raw){
+  let url;
+  try{
+    url=new URL(String(raw||"").trim());
+  }catch(e){
+    throw new Error("Invalid QR link.");
+  }
+
+  const allowedHosts=[
+    "script.google.com",
+    "script.googleusercontent.com"
+  ];
+
+  if(url.protocol!=="https:" || !allowedHosts.includes(url.hostname)){
+    throw new Error("Not an approved SCNHS link.");
+  }
+
+  const token=url.searchParams.get("token");
+
+  if(!token || !/^[a-f0-9]{64}$/i.test(token)){
+    throw new Error("Invalid student QR token.");
+  }
+
+  return url.href;
+}
+
+function showOpenButton(url){
+  const link=document.getElementById("openLink");
+  link.href=url;
+  link.style.display="inline-block";
+  showMessage("Valid student QR detected! Tap the green button.","success");
+}
+
+async function startScanner(){
+  if(typeof Html5Qrcode==="undefined"){
+    showMessage("Scanner library failed to load.","error");
+    return;
+  }
+
+  if(isScanning)return;
+
+  try{
+    document.getElementById("openLink").style.display="none";
+
+    if(!scanner)scanner=new Html5Qrcode("reader");
+
+    const cameras=await Html5Qrcode.getCameras();
+
+    if(!cameras.length)throw new Error("No camera found.");
+
+    const camera=cameras.find(c=>/back|rear|environment/i.test(c.label))||cameras[0];
+
+    await scanner.start(
+      camera.id,
+      {fps:10,qrbox:{width:240,height:240},aspectRatio:1},
+      decodedText=>{
+        try{
+          const validUrl=validateStudentUrl(decodedText);
+          stopScanner();
+          showOpenButton(validUrl);
+        }catch(error){
+          showMessage(error.message,"error");
+        }
+      },
+      ()=>{}
+    );
+
+    isScanning=true;
+    showMessage("Camera is on. Scan a student QR code.");
+  }catch(error){
+    showMessage(error.message||String(error),"error");
+  }
+}
+
+async function stopScanner(){
+  if(scanner && isScanning){
+    try{await scanner.stop();}catch(e){}
+    isScanning=false;
+  }
+}
+
+function useManualLink(){
+  try{
+    const url=validateStudentUrl(document.getElementById("manualUrl").value);
+    showOpenButton(url);
+  }catch(error){
+    document.getElementById("openLink").style.display="none";
+    showMessage(error.message,"error");
+  }
+}
+
+document.addEventListener("visibilitychange",()=>{
+  if(document.hidden)stopScanner();
+});
+</script>
+</body>
+</html>
